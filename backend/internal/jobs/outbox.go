@@ -4,11 +4,18 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log/slog"
 	"time"
 
+	"github.com/fhmifarid/rehla/backend/internal/platform/logging"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
+	"go.opentelemetry.io/otel/metric"
+	"go.opentelemetry.io/otel/trace"
 )
 
 type outboxMessage struct {
@@ -21,14 +28,56 @@ type outboxMessage struct {
 }
 
 type OutboxWorker struct {
-	db           *pgxpool.Pool
-	logger       *slog.Logger
-	pollInterval time.Duration
-	batchSize    int
+	db            *pgxpool.Pool
+	logger        *slog.Logger
+	pollInterval  time.Duration
+	batchSize     int
+	processed     metric.Int64Counter
+	batchErrors   metric.Int64Counter
+	batchDuration metric.Float64Histogram
 }
 
-func NewOutboxWorker(db *pgxpool.Pool, logger *slog.Logger, pollInterval time.Duration, batchSize int) *OutboxWorker {
-	return &OutboxWorker{db: db, logger: logger, pollInterval: pollInterval, batchSize: batchSize}
+func NewOutboxWorker(
+	db *pgxpool.Pool,
+	logger *slog.Logger,
+	pollInterval time.Duration,
+	batchSize int,
+) (*OutboxWorker, error) {
+	meter := otel.Meter("github.com/fhmifarid/rehla/backend/internal/jobs")
+	processed, err := meter.Int64Counter(
+		"rehla.outbox.events.processed",
+		metric.WithDescription("Number of outbox events committed as processed."),
+		metric.WithUnit("{event}"),
+	)
+	if err != nil {
+		return nil, fmt.Errorf("create outbox processed counter: %w", err)
+	}
+	batchErrors, err := meter.Int64Counter(
+		"rehla.outbox.batch.errors",
+		metric.WithDescription("Number of failed outbox processing batches."),
+		metric.WithUnit("{error}"),
+	)
+	if err != nil {
+		return nil, fmt.Errorf("create outbox error counter: %w", err)
+	}
+	batchDuration, err := meter.Float64Histogram(
+		"rehla.outbox.batch.duration",
+		metric.WithDescription("Outbox batch processing duration."),
+		metric.WithUnit("s"),
+	)
+	if err != nil {
+		return nil, fmt.Errorf("create outbox duration histogram: %w", err)
+	}
+
+	return &OutboxWorker{
+		db:            db,
+		logger:        logger,
+		pollInterval:  pollInterval,
+		batchSize:     batchSize,
+		processed:     processed,
+		batchErrors:   batchErrors,
+		batchDuration: batchDuration,
+	}, nil
 }
 
 func (w *OutboxWorker) Run(ctx context.Context) error {
@@ -48,7 +97,21 @@ func (w *OutboxWorker) Run(ctx context.Context) error {
 	}
 }
 
-func (w *OutboxWorker) processBatch(ctx context.Context) error {
+func (w *OutboxWorker) processBatch(ctx context.Context) (err error) {
+	started := time.Now()
+	ctx, span := otel.Tracer(
+		"github.com/fhmifarid/rehla/backend/internal/jobs",
+	).Start(ctx, "outbox.process_batch", trace.WithSpanKind(trace.SpanKindConsumer))
+	defer func() {
+		w.batchDuration.Record(ctx, time.Since(started).Seconds())
+		if err != nil {
+			w.batchErrors.Add(ctx, 1)
+			span.RecordError(err)
+			span.SetStatus(codes.Error, "outbox batch failed")
+		}
+		span.End()
+	}()
+
 	tx, err := w.db.BeginTx(ctx, pgx.TxOptions{})
 	if err != nil {
 		return err
@@ -81,11 +144,12 @@ func (w *OutboxWorker) processBatch(ctx context.Context) error {
 		return err
 	}
 	rows.Close()
+	span.SetAttributes(attribute.Int("rehla.outbox.batch.message_count", len(messages)))
 
 	for _, message := range messages {
 		// Phase-one events are durably consumed and logged. Domain-specific
 		// dispatchers are registered by later modules before emitting their events.
-		w.logger.Info("outbox event consumed",
+		logging.WithTraceContext(ctx, w.logger).InfoContext(ctx, "outbox event consumed",
 			"event_id", message.ID,
 			"event_type", message.EventType,
 			"aggregate_type", message.AggregateType,
@@ -98,5 +162,9 @@ func (w *OutboxWorker) processBatch(ctx context.Context) error {
 			return err
 		}
 	}
-	return tx.Commit(ctx)
+	if err := tx.Commit(ctx); err != nil {
+		return err
+	}
+	w.processed.Add(ctx, int64(len(messages)))
+	return nil
 }

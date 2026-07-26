@@ -16,11 +16,20 @@ type Database struct {
 	ConnectTimeout time.Duration
 }
 
+type Telemetry struct {
+	Enabled              bool
+	Endpoint             string
+	TraceSampleRatio     float64
+	MetricExportInterval time.Duration
+	ExportTimeout        time.Duration
+}
+
 type Config struct {
 	Environment        string
 	ServiceName        string
 	HTTPAddr           string
 	Database           Database
+	Telemetry          Telemetry
 	LogLevel           string
 	LogFormat          string
 	ShutdownTimeout    time.Duration
@@ -40,11 +49,20 @@ func Load() (Config, error) {
 		Database: Database{
 			URL: env("REHLA_DATABASE_URL", ""),
 		},
+		Telemetry: Telemetry{
+			Endpoint: env("REHLA_OTEL_EXPORTER_OTLP_ENDPOINT", ""),
+		},
 		LogLevel:  env("REHLA_LOG_LEVEL", "info"),
 		LogFormat: env("REHLA_LOG_FORMAT", "json"),
 	}
 
 	var err error
+	if cfg.Telemetry.Enabled, err = boolEnv("REHLA_OTEL_ENABLED", false); err != nil {
+		return Config{}, err
+	}
+	if cfg.Telemetry.TraceSampleRatio, err = float64Env("REHLA_OTEL_TRACE_SAMPLE_RATIO", 0.1); err != nil {
+		return Config{}, err
+	}
 	if cfg.Database.MaxConnections, err = int32Env("REHLA_DATABASE_MAX_CONNS", 20); err != nil {
 		return Config{}, err
 	}
@@ -70,6 +88,15 @@ func Load() (Config, error) {
 		return Config{}, err
 	}
 	if cfg.WorkerPollInterval, err = durationEnv("REHLA_WORKER_POLL_INTERVAL", 2*time.Second); err != nil {
+		return Config{}, err
+	}
+	if cfg.Telemetry.MetricExportInterval, err = durationEnv(
+		"REHLA_OTEL_METRIC_EXPORT_INTERVAL",
+		30*time.Second,
+	); err != nil {
+		return Config{}, err
+	}
+	if cfg.Telemetry.ExportTimeout, err = durationEnv("REHLA_OTEL_EXPORT_TIMEOUT", 10*time.Second); err != nil {
 		return Config{}, err
 	}
 
@@ -110,6 +137,14 @@ func (c Config) validate() error {
 	if c.LogFormat != "json" && c.LogFormat != "text" {
 		return fmt.Errorf("REHLA_LOG_FORMAT must be json or text")
 	}
+	if c.Telemetry.TraceSampleRatio < 0 || c.Telemetry.TraceSampleRatio > 1 {
+		return fmt.Errorf("REHLA_OTEL_TRACE_SAMPLE_RATIO must be between 0 and 1")
+	}
+	if c.Telemetry.Enabled {
+		if err := validateTelemetryEndpoint(c.Telemetry.Endpoint, c.Environment); err != nil {
+			return err
+		}
+	}
 	for _, origin := range c.AllowedOrigins {
 		parsed, err := url.Parse(origin)
 		if err != nil || parsed.Host == "" ||
@@ -121,6 +156,19 @@ func (c Config) validate() error {
 		if c.Environment == "production" && parsed.Scheme != "https" {
 			return fmt.Errorf("REHLA_ALLOWED_ORIGINS must use https in production")
 		}
+	}
+	return nil
+}
+
+func validateTelemetryEndpoint(endpoint, environment string) error {
+	parsed, err := url.Parse(endpoint)
+	if err != nil || parsed.Host == "" ||
+		(parsed.Scheme != "http" && parsed.Scheme != "https") ||
+		parsed.User != nil || parsed.RawQuery != "" || parsed.Fragment != "" {
+		return fmt.Errorf("REHLA_OTEL_EXPORTER_OTLP_ENDPOINT must be an absolute http or https URL")
+	}
+	if environment == "production" && parsed.Scheme != "https" {
+		return fmt.Errorf("REHLA_OTEL_EXPORTER_OTLP_ENDPOINT must use https in production")
 	}
 	return nil
 }
@@ -140,6 +188,30 @@ func durationEnv(key string, fallback time.Duration) (time.Duration, error) {
 	parsed, err := time.ParseDuration(value)
 	if err != nil || parsed <= 0 {
 		return 0, fmt.Errorf("%s must be a positive duration", key)
+	}
+	return parsed, nil
+}
+
+func boolEnv(key string, fallback bool) (bool, error) {
+	value, ok := os.LookupEnv(key)
+	if !ok {
+		return fallback, nil
+	}
+	parsed, err := strconv.ParseBool(value)
+	if err != nil {
+		return false, fmt.Errorf("%s must be a boolean", key)
+	}
+	return parsed, nil
+}
+
+func float64Env(key string, fallback float64) (float64, error) {
+	value, ok := os.LookupEnv(key)
+	if !ok {
+		return fallback, nil
+	}
+	parsed, err := strconv.ParseFloat(value, 64)
+	if err != nil {
+		return 0, fmt.Errorf("%s must be a number", key)
 	}
 	return parsed, nil
 }

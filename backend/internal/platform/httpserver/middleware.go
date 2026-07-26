@@ -10,6 +10,10 @@ import (
 	"time"
 
 	"github.com/fhmifarid/rehla/backend/internal/platform/apierror"
+	"github.com/fhmifarid/rehla/backend/internal/platform/logging"
+	"github.com/go-chi/chi/v5"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 )
 
 type statusRecorder struct {
@@ -53,7 +57,7 @@ func requestContext(logger *slog.Logger) func(http.Handler) http.Handler {
 			if status == 0 {
 				status = http.StatusOK
 			}
-			logger.Info("request complete",
+			logging.WithTraceContext(ctx, logger).InfoContext(ctx, "request complete",
 				"request_id", requestID,
 				"method", r.Method,
 				"path", r.URL.Path,
@@ -65,12 +69,31 @@ func requestContext(logger *slog.Logger) func(http.Handler) http.Handler {
 	}
 }
 
+func routeTelemetry(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		next.ServeHTTP(w, r)
+
+		routePattern := chi.RouteContext(r.Context()).RoutePattern()
+		if routePattern == "" {
+			return
+		}
+		span := trace.SpanFromContext(r.Context())
+		if !span.IsRecording() {
+			return
+		}
+		span.SetName(r.Method + " " + routePattern)
+		span.SetAttributes(attribute.String("http.route", routePattern))
+	})
+}
+
 func recoverer(logger *slog.Logger) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			defer func() {
 				if recovered := recover(); recovered != nil {
-					logger.Error("panic recovered",
+					logging.WithTraceContext(r.Context(), logger).ErrorContext(
+						r.Context(),
+						"panic recovered",
 						"request_id", apierror.RequestID(r.Context()),
 						"panic", recovered,
 						"stack", string(debug.Stack()),

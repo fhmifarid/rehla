@@ -5,6 +5,8 @@ import (
 	"errors"
 	"log/slog"
 	"net/http"
+
+	"github.com/fhmifarid/rehla/backend/internal/platform/logging"
 )
 
 type FieldViolation struct {
@@ -59,8 +61,9 @@ func Write(w http.ResponseWriter, r *http.Request, logger *slog.Logger, err erro
 	}
 
 	requestID := RequestID(r.Context())
+	requestLogger := logging.WithTraceContext(r.Context(), logger)
 	if apiErr.Status >= http.StatusInternalServerError {
-		logger.Error("request failed", "request_id", requestID, "error", err)
+		requestLogger.ErrorContext(r.Context(), "request failed", "request_id", requestID, "error", err)
 	}
 
 	w.Header().Set("Content-Type", "application/json")
@@ -72,6 +75,13 @@ func Write(w http.ResponseWriter, r *http.Request, logger *slog.Logger, err erro
 		Details:   apiErr.Details,
 		Retryable: apiErr.Retryable,
 	}}); encodeErr != nil {
-		logger.Error("encode error response", "request_id", requestID, "error", encodeErr)
+		requestLogger.ErrorContext(
+			r.Context(),
+			"encode error response",
+			"request_id",
+			requestID,
+			"error",
+			encodeErr,
+		)
 	}
 }

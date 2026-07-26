@@ -2,6 +2,7 @@ package httpserver
 
 import (
 	"bytes"
+	"context"
 	"io"
 	"log/slog"
 	"net/http"
@@ -13,6 +14,9 @@ import (
 	"github.com/fhmifarid/rehla/backend/internal/platform/apierror"
 	"github.com/fhmifarid/rehla/backend/openapi"
 	"github.com/go-chi/chi/v5"
+	"go.opentelemetry.io/otel"
+	sdktrace "go.opentelemetry.io/otel/sdk/trace"
+	"go.opentelemetry.io/otel/sdk/trace/tracetest"
 )
 
 func TestHealthEndpoint(t *testing.T) {
@@ -140,5 +144,56 @@ func TestCORSRejectsUnknownHeaders(t *testing.T) {
 	}
 	if !strings.Contains(response.Body.String(), `"code":"cors_headers_denied"`) {
 		t.Fatalf("body = %q", response.Body.String())
+	}
+}
+
+func TestHTTPInstrumentationUsesStableRouteAndCorrelatesLogs(t *testing.T) {
+	spanRecorder := tracetest.NewSpanRecorder()
+	tracerProvider := sdktrace.NewTracerProvider(
+		sdktrace.WithSpanProcessor(spanRecorder),
+		sdktrace.WithSampler(sdktrace.AlwaysSample()),
+	)
+	previousTracerProvider := otel.GetTracerProvider()
+	otel.SetTracerProvider(tracerProvider)
+	t.Cleanup(func() {
+		_ = tracerProvider.Shutdown(context.Background())
+		otel.SetTracerProvider(previousTracerProvider)
+	})
+
+	var logs bytes.Buffer
+	logger := slog.New(slog.NewJSONHandler(&logs, nil))
+	handler := New(Dependencies{
+		Config: config.Config{ServiceName: "rehla-test"},
+		Logger: logger,
+	})
+	request := httptest.NewRequest(http.MethodGet, "/healthz", nil)
+	response := httptest.NewRecorder()
+
+	handler.ServeHTTP(response, request)
+
+	var requestSpan sdktrace.ReadOnlySpan
+	for _, span := range spanRecorder.Ended() {
+		if span.Name() == "GET /healthz" {
+			requestSpan = span
+			break
+		}
+	}
+	if requestSpan == nil {
+		t.Fatal("expected an ended span named GET /healthz")
+	}
+	var route string
+	for _, item := range requestSpan.Attributes() {
+		if string(item.Key) == "http.route" {
+			route = item.Value.AsString()
+		}
+	}
+	if route != "/healthz" {
+		t.Fatalf("http.route = %q, want /healthz", route)
+	}
+	if !strings.Contains(logs.String(), requestSpan.SpanContext().TraceID().String()) {
+		t.Fatal("request log did not include trace_id")
+	}
+	if !strings.Contains(logs.String(), requestSpan.SpanContext().SpanID().String()) {
+		t.Fatal("request log did not include span_id")
 	}
 }

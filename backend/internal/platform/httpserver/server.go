@@ -10,6 +10,7 @@ import (
 	"github.com/fhmifarid/rehla/backend/internal/platform/apierror"
 	"github.com/go-chi/chi/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 )
 
 type Dependencies struct {
@@ -20,7 +21,9 @@ type Dependencies struct {
 
 func New(deps Dependencies) http.Handler {
 	router := chi.NewRouter()
+	router.Use(otelhttp.NewMiddleware("http.request"))
 	router.Use(requestContext(deps.Logger))
+	router.Use(routeTelemetry)
 	router.Use(recoverer(deps.Logger))
 	router.Use(securityHeaders)
 	router.Use(corsPolicy(deps.Config.AllowedOrigins, deps.Logger))

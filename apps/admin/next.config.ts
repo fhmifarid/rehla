@@ -13,6 +13,7 @@ const nextConfig: NextConfig = {
   typedRoutes: true,
   experimental: {
     authInterrupts: true,
+    useTypeScriptCli: true,
   },
   async headers() {
     return [

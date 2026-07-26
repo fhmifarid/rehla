@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"log/slog"
 	"os"
 	"os/signal"
@@ -11,6 +12,7 @@ import (
 	"github.com/fhmifarid/rehla/backend/internal/database"
 	"github.com/fhmifarid/rehla/backend/internal/jobs"
 	"github.com/fhmifarid/rehla/backend/internal/platform/logging"
+	"github.com/fhmifarid/rehla/backend/internal/platform/telemetry"
 )
 
 func main() {
@@ -20,7 +22,7 @@ func main() {
 	}
 }
 
-func run() error {
+func run() (runErr error) {
 	cfg, err := config.Load()
 	if err != nil {
 		return err
@@ -33,13 +35,27 @@ func run() error {
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
+	shutdownTelemetry, err := telemetry.Setup(ctx, cfg)
+	if err != nil {
+		return err
+	}
+	defer func() {
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), cfg.ShutdownTimeout)
+		defer cancel()
+		runErr = errors.Join(runErr, shutdownTelemetry(shutdownCtx))
+	}()
+	logger.Info("telemetry configured", "enabled", cfg.Telemetry.Enabled)
+
 	pool, err := database.Open(ctx, cfg.Database)
 	if err != nil {
 		return err
 	}
 	defer pool.Close()
 
-	worker := jobs.NewOutboxWorker(pool, logger, cfg.WorkerPollInterval, cfg.WorkerBatchSize)
+	worker, err := jobs.NewOutboxWorker(pool, logger, cfg.WorkerPollInterval, cfg.WorkerBatchSize)
+	if err != nil {
+		return err
+	}
 	logger.Info("worker started", "poll_interval", cfg.WorkerPollInterval, "batch_size", cfg.WorkerBatchSize)
 	return worker.Run(ctx)
 }
