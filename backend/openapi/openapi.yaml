@@ -1,0 +1,109 @@
+openapi: 3.1.0
+info:
+  title: Rehla API
+  version: 0.1.0
+  summary: Travel commerce and operations API
+  description: |
+    Canonical contract for the Rehla admin and future customer applications.
+    All error responses use a stable machine-readable code and request ID.
+servers:
+  - url: http://localhost:8080
+    description: Local development
+tags:
+  - name: System
+paths:
+  /healthz:
+    get:
+      tags: [System]
+      operationId: getHealth
+      summary: Check process liveness
+      responses:
+        "200":
+          description: Process is alive.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Health"
+  /readyz:
+    get:
+      tags: [System]
+      operationId: getReadiness
+      summary: Check required dependencies
+      responses:
+        "200":
+          description: Dependencies are ready.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Health"
+        "503":
+          $ref: "#/components/responses/DependencyUnavailable"
+  /v1/system/info:
+    get:
+      tags: [System]
+      operationId: getSystemInfo
+      summary: Return non-sensitive runtime metadata
+      responses:
+        "200":
+          description: Runtime metadata.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SystemInfo"
+components:
+  schemas:
+    Health:
+      type: object
+      additionalProperties: false
+      required: [status]
+      properties:
+        status:
+          type: string
+          examples: [ok]
+    SystemInfo:
+      type: object
+      additionalProperties: false
+      required: [name, environment, version]
+      properties:
+        name:
+          type: string
+        environment:
+          type: string
+          enum: [local, test, staging, production]
+        version:
+          type: string
+    APIError:
+      type: object
+      additionalProperties: false
+      required: [error]
+      properties:
+        error:
+          type: object
+          additionalProperties: false
+          required: [code, message, retryable]
+          properties:
+            code:
+              type: string
+            message:
+              type: string
+            request_id:
+              type: string
+            retryable:
+              type: boolean
+            details:
+              type: array
+              items:
+                type: object
+                required: [field, message]
+                properties:
+                  field:
+                    type: string
+                  message:
+                    type: string
+  responses:
+    DependencyUnavailable:
+      description: A required dependency is unavailable.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/APIError"

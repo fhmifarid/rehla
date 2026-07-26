@@ -1,0 +1,18 @@
+FROM golang:1.26.5-alpine AS build
+WORKDIR /src/backend
+COPY backend/go.mod backend/go.sum* ./
+RUN go mod download
+COPY backend/ ./
+ARG TARGETOS=linux
+ARG TARGETARCH=amd64
+RUN CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} \
+    go build -trimpath -ldflags="-s -w" -o /out/api ./cmd/api && \
+    go build -trimpath -ldflags="-s -w" -o /out/worker ./cmd/worker && \
+    go build -trimpath -ldflags="-s -w" -o /out/migrate ./cmd/migrate
+
+FROM alpine:3.23
+RUN addgroup -S rehla && adduser -S -G rehla -u 10001 rehla
+COPY --from=build /out/api /out/worker /out/migrate /usr/local/bin/
+USER 10001
+EXPOSE 8080
+ENTRYPOINT ["/usr/local/bin/api"]
