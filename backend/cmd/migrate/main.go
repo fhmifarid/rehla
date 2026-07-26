@@ -6,10 +6,10 @@ import (
 	"log/slog"
 	"os"
 
-	"github.com/rehla-platform/rehla/backend/internal/config"
-	"github.com/rehla-platform/rehla/backend/internal/database"
-	"github.com/rehla-platform/rehla/backend/internal/database/migrations"
-	"github.com/rehla-platform/rehla/backend/internal/platform/logging"
+	"github.com/fhmifarid/rehla/backend/internal/config"
+	"github.com/fhmifarid/rehla/backend/internal/database"
+	"github.com/fhmifarid/rehla/backend/internal/database/migrations"
+	"github.com/fhmifarid/rehla/backend/internal/platform/logging"
 )
 
 func main() {

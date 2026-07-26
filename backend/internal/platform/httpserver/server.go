@@ -6,11 +6,11 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/fhmifarid/rehla/backend/internal/config"
+	"github.com/fhmifarid/rehla/backend/internal/platform/apierror"
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/jackc/pgx/v5/pgxpool"
-	"github.com/rehla-platform/rehla/backend/internal/config"
-	"github.com/rehla-platform/rehla/backend/internal/platform/apierror"
 )
 
 type Dependencies struct {

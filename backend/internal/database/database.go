@@ -4,8 +4,8 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/fhmifarid/rehla/backend/internal/config"
 	"github.com/jackc/pgx/v5/pgxpool"
-	"github.com/rehla-platform/rehla/backend/internal/config"
 )
 
 func Open(ctx context.Context, cfg config.Database) (*pgxpool.Pool, error) {

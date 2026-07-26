@@ -8,8 +8,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/fhmifarid/rehla/backend/internal/platform/apierror"
 	"github.com/go-chi/chi/v5"
-	"github.com/rehla-platform/rehla/backend/internal/platform/apierror"
 )
 
 func TestHealthEndpoint(t *testing.T) {
