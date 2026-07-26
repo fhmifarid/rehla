@@ -17,6 +17,8 @@
     "typecheck": "npm run typecheck --workspaces --if-present"
   },
   "dependencies": {
+    "@rolldown/binding-win32-x64-msvc": "^1.2.0",
+    "@rolldown/pluginutils": "^1.0.1",
     "node-exports-info": "^2.0.0"
   }
 }
