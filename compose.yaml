@@ -13,7 +13,7 @@ services:
       POSTGRES_USER: ${POSTGRES_USER:-rehla}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-rehla_local_only}
     ports:
-      - "5432:5432"
+      - "${POSTGRES_PORT:-55432}:5432"
     volumes:
       - postgres_data:/var/lib/postgresql
     healthcheck:
@@ -79,9 +79,9 @@ services:
     environment:
       <<: *backend-environment
       REHLA_HTTP_ADDR: :8080
-      REHLA_ALLOWED_ORIGINS: http://localhost:3000
+      REHLA_ALLOWED_ORIGINS: http://localhost:${ADMIN_PORT:-53000},http://localhost:3000
     ports:
-      - "8080:8080"
+      - "${API_PORT:-58080}:8080"
     depends_on:
       migrate:
         condition: service_completed_successfully
@@ -108,9 +108,9 @@ services:
       context: .
       dockerfile: Dockerfile.admin
     environment:
-      NEXT_PUBLIC_API_BASE_URL: http://localhost:8080
+      NEXT_PUBLIC_API_BASE_URL: http://localhost:${API_PORT:-58080}
     ports:
-      - "3000:3000"
+      - "${ADMIN_PORT:-53000}:3000"
     depends_on:
       api:
         condition: service_healthy

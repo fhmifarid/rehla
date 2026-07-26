@@ -27,7 +27,7 @@ body {
   margin: 0;
   background: var(--canvas);
   color: var(--ink);
-  font-family: var(--font-sans), Arial, sans-serif;
+  font-family: var(--font-geist-sans), Arial, sans-serif;
 }
 
 button,
@@ -223,7 +223,7 @@ kbd {
   border: 1px solid #d8dfdc;
   border-radius: 5px;
   color: #617069;
-  font-family: var(--font-mono), monospace;
+  font-family: var(--font-geist-mono), monospace;
   font-size: 10px;
   padding: 2px 6px;
 }

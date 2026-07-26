@@ -2,6 +2,7 @@ package config
 
 import (
 	"fmt"
+	"net/url"
 	"os"
 	"strconv"
 	"strings"
@@ -73,8 +74,13 @@ func Load() (Config, error) {
 	}
 
 	origins := env("REHLA_ALLOWED_ORIGINS", "http://localhost:3000")
+	seenOrigins := make(map[string]struct{})
 	for _, origin := range strings.Split(origins, ",") {
 		if trimmed := strings.TrimSpace(origin); trimmed != "" {
+			if _, exists := seenOrigins[trimmed]; exists {
+				continue
+			}
+			seenOrigins[trimmed] = struct{}{}
 			cfg.AllowedOrigins = append(cfg.AllowedOrigins, trimmed)
 		}
 	}
@@ -103,6 +109,18 @@ func (c Config) validate() error {
 	}
 	if c.LogFormat != "json" && c.LogFormat != "text" {
 		return fmt.Errorf("REHLA_LOG_FORMAT must be json or text")
+	}
+	for _, origin := range c.AllowedOrigins {
+		parsed, err := url.Parse(origin)
+		if err != nil || parsed.Host == "" ||
+			(parsed.Scheme != "http" && parsed.Scheme != "https") ||
+			parsed.User != nil || parsed.RawQuery != "" || parsed.Fragment != "" ||
+			parsed.Path != "" {
+			return fmt.Errorf("REHLA_ALLOWED_ORIGINS contains invalid origin %q", origin)
+		}
+		if c.Environment == "production" && parsed.Scheme != "https" {
+			return fmt.Errorf("REHLA_ALLOWED_ORIGINS must use https in production")
+		}
 	}
 	return nil
 }

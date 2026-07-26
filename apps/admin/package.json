@@ -7,10 +7,11 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint . --max-warnings=0",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "next typegen && tsc --noEmit",
     "test": "vitest run"
   },
   "dependencies": {
+    "geist": "1.7.2",
     "next": "16.2.12",
     "react": "19.2.8",
     "react-dom": "19.2.8"

@@ -20,16 +20,21 @@ make migrate-up
 make api
 ```
 
+The Makefile loads the local `.env` file when it exists. Keep real production
+secrets outside the repository and inject them through the deployment secret
+manager.
+
 In another terminal:
 
 ```bash
-npm install
+npm ci
 npm run dev --workspace=@rehla/admin
 ```
 
-The API listens on `http://localhost:8080`, the admin on
-`http://localhost:3000`, MinIO on `http://localhost:9001`, and Mailpit on
-`http://localhost:8025`.
+The API listens on `http://localhost:58080`, the native admin dev server on
+`http://localhost:3000`, PostgreSQL on `localhost:55432`, MinIO on
+`http://localhost:9001`, and Mailpit on `http://localhost:8025`. The full
+Compose stack exposes the admin container on `http://localhost:53000`.
 
 Useful endpoints:
 

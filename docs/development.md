@@ -3,7 +3,11 @@
 ## Local services
 
 Copy `.env.example` to `.env`. The example contains development-only
-credentials and no production secrets.
+credentials and no production secrets. The Makefile loads this file for local
+commands. PostgreSQL, the API, and the containerized admin use host ports
+`55432`, `58080`, and `53000` by default to avoid common host conflicts.
+Change `POSTGRES_PORT`, `API_PORT`, `ADMIN_PORT`, and their matching public
+URLs together when necessary.
 
 ```bash
 docker compose up -d postgres redis minio mailpit
@@ -29,8 +33,8 @@ make sqlc
 
 Migration files are append-only after deployment. The embedded copy used by
 the migration binary lives in `backend/internal/database/migrations/sql`; CI
-must verify it matches `backend/migrations` until the runner is extracted into
-a dedicated build-time package.
+verifies every upward migration against `backend/migrations` until the runner
+is extracted into a dedicated build-time package.
 
 ## Configuration
 
@@ -41,7 +45,8 @@ files or `NEXT_PUBLIC_*` variables.
 
 ## API changes
 
-The canonical contract is `backend/openapi/openapi.yaml`. API changes require:
+The canonical contract is `backend/openapi/openapi.yaml` and is embedded
+directly by the `backend/openapi` package. API changes require:
 
 1. updating the contract;
 2. implementing server behavior;

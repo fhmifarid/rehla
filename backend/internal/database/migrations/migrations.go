@@ -3,10 +3,11 @@ package migrations
 import (
 	"context"
 	"embed"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
-	"path/filepath"
+	"path"
 	"sort"
 	"strconv"
 	"strings"
@@ -28,15 +29,6 @@ func New(db *pgxpool.Pool, logger *slog.Logger) *Runner {
 }
 
 func (r *Runner) Up(ctx context.Context) error {
-	if _, err := r.db.Exec(ctx, `
-		CREATE TABLE IF NOT EXISTS schema_migrations (
-			version BIGINT PRIMARY KEY,
-			name TEXT NOT NULL,
-			applied_at TIMESTAMPTZ NOT NULL DEFAULT now()
-		)`); err != nil {
-		return fmt.Errorf("create migration table: %w", err)
-	}
-
 	entries, err := files.ReadDir("sql")
 	if err != nil {
 		return err
@@ -47,47 +39,75 @@ func (r *Runner) Up(ctx context.Context) error {
 		if err != nil {
 			return err
 		}
-		var applied bool
-		if err := r.db.QueryRow(ctx,
-			`SELECT EXISTS (SELECT 1 FROM schema_migrations WHERE version = $1)`,
-			version,
-		).Scan(&applied); err != nil {
-			return err
-		}
-		if applied {
-			continue
-		}
-		body, err := files.ReadFile(filepath.Join("sql", entry.Name()))
+		body, err := files.ReadFile(path.Join("sql", entry.Name()))
 		if err != nil {
 			return err
 		}
-		if err := r.apply(ctx, version, entry.Name(), string(body)); err != nil {
+		applied, err := r.apply(ctx, version, entry.Name(), string(body))
+		if err != nil {
 			return err
 		}
-		r.logger.Info("migration applied", "version", version, "name", entry.Name())
+		if applied {
+			r.logger.Info("migration applied", "version", version, "name", entry.Name())
+		}
 	}
 	return nil
 }
 
-func (r *Runner) apply(ctx context.Context, version int64, name, body string) error {
+func (r *Runner) apply(ctx context.Context, version int64, name, body string) (bool, error) {
 	tx, err := r.db.BeginTx(ctx, pgx.TxOptions{})
 	if err != nil {
-		return err
+		return false, err
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
 	if _, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock(731942001)`); err != nil {
-		return err
+		return false, err
 	}
+	if _, err := tx.Exec(ctx, `
+		CREATE TABLE IF NOT EXISTS schema_migrations (
+			version BIGINT PRIMARY KEY,
+			name TEXT NOT NULL,
+			applied_at TIMESTAMPTZ NOT NULL DEFAULT now()
+		)`); err != nil {
+		return false, fmt.Errorf("create migration table: %w", err)
+	}
+
+	var existingName string
+	err = tx.QueryRow(ctx,
+		`SELECT name FROM schema_migrations WHERE version = $1`,
+		version,
+	).Scan(&existingName)
+	switch {
+	case err == nil:
+		if existingName != name {
+			return false, fmt.Errorf(
+				"migration version %d is already applied as %q, not %q",
+				version,
+				existingName,
+				name,
+			)
+		}
+		if err := tx.Commit(ctx); err != nil {
+			return false, err
+		}
+		return false, nil
+	case !errors.Is(err, pgx.ErrNoRows):
+		return false, err
+	}
+
 	if _, err := tx.Exec(ctx, body); err != nil {
-		return fmt.Errorf("apply migration %s: %w", name, err)
+		return false, fmt.Errorf("apply migration %s: %w", name, err)
 	}
 	if _, err := tx.Exec(ctx,
 		`INSERT INTO schema_migrations (version, name) VALUES ($1, $2)`,
 		version, name,
 	); err != nil {
-		return err
+		return false, err
 	}
-	return tx.Commit(ctx)
+	if err := tx.Commit(ctx); err != nil {
+		return false, err
+	}
+	return true, nil
 }
 
 func (r *Runner) Status(ctx context.Context, output io.Writer) error {
@@ -119,7 +139,7 @@ func migrationVersion(name string) (int64, error) {
 		return 0, fmt.Errorf("invalid migration filename %q", name)
 	}
 	version, err := strconv.ParseInt(prefix, 10, 64)
-	if err != nil {
+	if err != nil || version < 1 {
 		return 0, fmt.Errorf("invalid migration version in %q", name)
 	}
 	return version, nil

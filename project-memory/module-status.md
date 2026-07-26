@@ -5,9 +5,9 @@
 | Platform configuration | Implemented | Startup validation and safe defaults |
 | Structured logging | Implemented | JSON/text slog and request correlation |
 | HTTP API foundation | Implemented | Routing, recovery, errors, security headers |
-| PostgreSQL foundation | Implemented | pgx pool, migrations, sqlc config |
+| PostgreSQL foundation | Implemented | pgx pool, concurrent migrations, generated sqlc access |
 | Worker/outbox | Implemented | Durable polling and locking foundation |
-| OpenAPI | Implemented | 3.1 foundation contract |
+| OpenAPI | Implemented | Canonical 3.1 contract embedded directly |
 | Next.js admin | Foundation implemented | Strict shell and dashboard; not authenticated |
 | TypeScript API client | Foundation implemented | System-info call and error type |
 | Identity and security | Not started | Current next module |

@@ -1,3 +1,8 @@
+ifneq (,$(wildcard .env))
+include .env
+export
+endif
+
 .PHONY: api worker migrate-up migrate-status sqlc test test-backend test-admin lint build dev-up dev-down
 
 api:

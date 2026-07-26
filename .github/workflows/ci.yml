@@ -16,9 +16,27 @@ jobs:
   backend:
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:18.4-alpine
+        env:
+          POSTGRES_DB: rehla_test
+          POSTGRES_USER: rehla
+          POSTGRES_PASSWORD: rehla_test_only
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U rehla -d rehla_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
     defaults:
       run:
         working-directory: backend
+    env:
+      REHLA_ENV: test
+      REHLA_DATABASE_URL: postgres://rehla:rehla_test_only@localhost:5432/rehla_test?sslmode=disable
+      REHLA_TEST_DATABASE_URL: postgres://rehla:rehla_test_only@localhost:5432/rehla_test?sslmode=disable
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-go@v6
@@ -26,9 +44,17 @@ jobs:
           go-version: "1.26.5"
           cache-dependency-path: backend/go.sum
       - run: go mod download
+      - name: Verify generated SQL
+        run: |
+          go run github.com/sqlc-dev/sqlc/cmd/sqlc@v1.30.0 generate
+          git diff --exit-code -- internal/database/dbgen
+          test -z "$(git status --porcelain -- internal/database/dbgen)"
+      - name: Apply migrations twice
+        run: |
+          go run ./cmd/migrate up
+          go run ./cmd/migrate up
+          go run ./cmd/migrate status
       - run: go test -race -coverprofile=coverage.out ./...
-        env:
-          REHLA_DATABASE_URL: postgres://unused
       - run: go vet ./...
       - run: go install honnef.co/go/tools/cmd/staticcheck@latest
       - run: staticcheck ./...

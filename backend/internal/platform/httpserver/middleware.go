@@ -19,6 +19,9 @@ type statusRecorder struct {
 }
 
 func (w *statusRecorder) WriteHeader(status int) {
+	if w.status != 0 {
+		return
+	}
 	w.status = status
 	w.ResponseWriter.WriteHeader(status)
 }
@@ -46,11 +49,15 @@ func requestContext(logger *slog.Logger) func(http.Handler) http.Handler {
 			ctx := apierror.ContextWithRequestID(r.Context(), requestID)
 			next.ServeHTTP(recorder, r.WithContext(ctx))
 
+			status := recorder.status
+			if status == 0 {
+				status = http.StatusOK
+			}
 			logger.Info("request complete",
 				"request_id", requestID,
 				"method", r.Method,
 				"path", r.URL.Path,
-				"status", recorder.status,
+				"status", status,
 				"bytes", recorder.bytes,
 				"duration_ms", time.Since(started).Milliseconds(),
 			)

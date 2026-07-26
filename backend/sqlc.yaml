@@ -1,7 +1,7 @@
 version: "2"
 sql:
   - engine: postgresql
-    schema: migrations/000001_foundation.up.sql
+    schema: migrations
     queries: queries
     gen:
       go:

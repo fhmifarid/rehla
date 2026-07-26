@@ -20,3 +20,27 @@ Implemented:
 
 Verification results are recorded in `known-issues.md` until the final Phase 1
 test pass completes.
+
+## 2026-07-26 — Phase 1 foundation hardening
+
+Implemented:
+
+- reproducible npm lockfile and a verified Next.js standalone build;
+- self-hosted Geist fonts so production builds do not call Google Fonts;
+- explicit, credential-aware CORS with validated exact origins;
+- removal of untrusted forwarded-IP handling until trusted proxies are configured;
+- concurrency-safe and idempotent migration application;
+- generated sqlc access committed and checked for drift in CI;
+- one canonical OpenAPI document embedded directly in the API;
+- PostgreSQL-backed CI migration smoke tests and concurrent migration coverage;
+- a collision-resistant local PostgreSQL host port and Makefile `.env` loading.
+
+Verified locally:
+
+- Go tests and `go vet`;
+- npm lint, typecheck, unit tests, lockfile dry-run, and production build;
+- backend and admin container builds;
+- migration application, repeat application, status, and two concurrent runners
+  against isolated Compose databases;
+- full Compose smoke tests for API liveness/readiness, canonical OpenAPI,
+  allowed and denied CORS, and the containerized admin dashboard.

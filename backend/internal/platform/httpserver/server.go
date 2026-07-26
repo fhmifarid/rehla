@@ -9,7 +9,6 @@ import (
 	"github.com/fhmifarid/rehla/backend/internal/config"
 	"github.com/fhmifarid/rehla/backend/internal/platform/apierror"
 	"github.com/go-chi/chi/v5"
-	"github.com/go-chi/chi/v5/middleware"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -21,10 +20,10 @@ type Dependencies struct {
 
 func New(deps Dependencies) http.Handler {
 	router := chi.NewRouter()
-	router.Use(middleware.RealIP)
 	router.Use(requestContext(deps.Logger))
 	router.Use(recoverer(deps.Logger))
 	router.Use(securityHeaders)
+	router.Use(corsPolicy(deps.Config.AllowedOrigins, deps.Logger))
 
 	router.NotFound(func(w http.ResponseWriter, r *http.Request) {
 		apierror.Write(w, r, deps.Logger, &apierror.Error{
