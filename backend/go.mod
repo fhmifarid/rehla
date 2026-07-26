@@ -1,4 +1,4 @@
-module github.com/rehla-platform/rehla/backend
+module github.com/fhmifarid/rehla/backend
 
 go 1.26.0
 
